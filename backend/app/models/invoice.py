@@ -18,8 +18,10 @@ class Invoice(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     invoice_number = Column(String, index=True, nullable=False)
-    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=False)
-    po_id = Column(Integer, ForeignKey("purchase_orders.id"))
+    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True)
+    raw_vendor_name = Column(String, nullable=True)
+    po_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=True)
+
     invoice_date = Column(DateTime, nullable=False)
     due_date = Column(DateTime)
     currency = Column(String, default="USD")

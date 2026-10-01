@@ -30,6 +30,7 @@ class ExceptionStatus(str, enum.Enum):
     IN_REVIEW = "IN_REVIEW"
     RESOLVED = "RESOLVED"
     REJECTED = "REJECTED"
+    OVERRIDDEN = "OVERRIDDEN"
 
 class Exception(Base):
     __tablename__ = "exceptions"
@@ -40,10 +41,14 @@ class Exception(Base):
     severity = Column(SQLEnum(ExceptionSeverity), nullable=False)
     status = Column(SQLEnum(ExceptionStatus), default=ExceptionStatus.OPEN)
     message = Column(String, nullable=False)
-    assigned_to = Column(Integer)
-    resolution = Column(Text)
+    assigned_to = Column(Integer, nullable=True)
+    assigned_to_name = Column(String, nullable=True)
+    resolution = Column(Text, nullable=True)
+    resolution_notes = Column(Text, nullable=True)
+    override_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    resolved_at = Column(DateTime)
+    resolved_at = Column(DateTime, nullable=True)
     
     # Relationships
     invoice = relationship("Invoice", back_populates="exceptions")
+

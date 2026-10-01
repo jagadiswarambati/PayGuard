@@ -20,11 +20,14 @@ class AuditAction(str, enum.Enum):
     FINANCIAL_CHECKED = "FINANCIAL_CHECKED"
     EXCEPTION_CREATED = "EXCEPTION_CREATED"
     EXCEPTION_RESOLVED = "EXCEPTION_RESOLVED"
+    EXCEPTION_OVERRIDDEN = "EXCEPTION_OVERRIDDEN"
+    EXCEPTION_REASSIGNED = "EXCEPTION_REASSIGNED"
     APPROVAL_REQUESTED = "APPROVAL_REQUESTED"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     PAYABLE_CREATED = "PAYABLE_CREATED"
     PAYMENT_STATUS_CHANGED = "PAYMENT_STATUS_CHANGED"
+    SETTINGS_UPDATED = "SETTINGS_UPDATED"
 
 class AuditEvent(Base):
     __tablename__ = "audit_events"
@@ -34,7 +37,17 @@ class AuditEvent(Base):
     entity_id = Column(Integer, nullable=False)
     action = Column(SQLEnum(AuditAction), nullable=False)
     actor_type = Column(SQLEnum(ActorType), nullable=False)
-    actor_id = Column(Integer)
+    actor_id = Column(Integer, nullable=True)
     result = Column(String)
-    metadata = Column(JSON)
+    event_metadata = Column("metadata", JSON, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+    def __init__(self, **kwargs):
+        if "metadata" in kwargs:
+            kwargs["event_metadata"] = kwargs.pop("metadata")
+        super().__init__(**kwargs)
+
+    @property
+    def meta(self):
+        return self.event_metadata or {}
+
