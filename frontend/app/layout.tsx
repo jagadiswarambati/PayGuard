@@ -1,7 +1,7 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Home, FileText, AlertCircle, CheckSquare, DollarSign, FileSearch } from 'lucide-react'
+import { Home, FileText, AlertCircle, CheckSquare, DollarSign, FileSearch, Settings as SettingsIcon } from 'lucide-react'
 
 export const metadata: Metadata = {
   title: 'FIN-06 AP Control System',
@@ -31,8 +31,10 @@ export default function RootLayout({
               <NavLink href="/approvals" icon={<CheckSquare size={20} />}>Approvals</NavLink>
               <NavLink href="/ledger" icon={<DollarSign size={20} />}>Payable Ledger</NavLink>
               <NavLink href="/audit" icon={<FileSearch size={20} />}>Audit Trail</NavLink>
+              <NavLink href="/settings" icon={<SettingsIcon size={20} />}>Settings</NavLink>
             </nav>
           </aside>
+
           
           {/* Main content */}
           <main className="flex-1 p-8 overflow-auto">
