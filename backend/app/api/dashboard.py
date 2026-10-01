@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from ..database import get_db
 from ..models import (
-    Invoice, InvoiceStatus, Exception, ExceptionStatus,
+    Invoice, InvoiceStatus, Exception as InvoiceException, ExceptionStatus,
+    Approval, ApprovalStatus,
     PayableObligation, PaymentStatus, AuditEvent
 )
 
@@ -13,32 +14,45 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("")
 async def get_dashboard(db: Session = Depends(get_db)):
-    """Get dashboard metrics - ALL DYNAMICALLY CALCULATED"""
+    """Get dashboard metrics - 100% dynamically calculated from actual database records"""
     
-    # Invoice counts
+    # 1. Invoice counts
     total_invoices = db.query(func.count(Invoice.id)).scalar() or 0
     pending_review = db.query(func.count(Invoice.id)).filter(
         Invoice.status == InvoiceStatus.PENDING_REVIEW
     ).scalar() or 0
     approved_invoices = db.query(func.count(Invoice.id)).filter(
-        Invoice.status == InvoiceStatus.APPROVED
+        Invoice.status.in_([InvoiceStatus.APPROVED, InvoiceStatus.PAID])
+    ).scalar() or 0
+    rejected_invoices = db.query(func.count(Invoice.id)).filter(
+        Invoice.status == InvoiceStatus.REJECTED
+    ).scalar() or 0
+    on_hold_invoices = db.query(func.count(Invoice.id)).filter(
+        Invoice.status == InvoiceStatus.ON_HOLD
     ).scalar() or 0
     
-    # Exception counts
-    total_exceptions = db.query(func.count(Exception.id)).scalar() or 0
-    open_exceptions = db.query(func.count(Exception.id)).filter(
-        Exception.status == ExceptionStatus.OPEN
+    # 2. Exception counts
+    total_exceptions = db.query(func.count(InvoiceException.id)).scalar() or 0
+    open_exceptions = db.query(func.count(InvoiceException.id)).filter(
+        InvoiceException.status.in_([ExceptionStatus.OPEN, ExceptionStatus.IN_REVIEW])
     ).scalar() or 0
     
-    # Payable amounts
+    # 3. Pending approvals
+    pending_approvals = db.query(func.count(Approval.id)).filter(
+        Approval.status == ApprovalStatus.PENDING
+    ).scalar() or 0
+    
+    # 4. Payable amounts
     payable_amount = db.query(func.sum(PayableObligation.amount)).filter(
-        PayableObligation.payment_status == PaymentStatus.UNPAID
+        PayableObligation.payment_status.in_([PaymentStatus.UNPAID, PaymentStatus.SCHEDULED])
     ).scalar() or 0.0
     
+    now = datetime.utcnow()
     overdue_amount = db.query(func.sum(PayableObligation.amount)).filter(
         and_(
             PayableObligation.payment_status == PaymentStatus.UNPAID,
-            PayableObligation.due_date < datetime.utcnow()
+            PayableObligation.due_date != None,
+            PayableObligation.due_date < now
         )
     ).scalar() or 0.0
     
@@ -46,25 +60,25 @@ async def get_dashboard(db: Session = Depends(get_db)):
         PayableObligation.payment_status == PaymentStatus.PAID
     ).scalar() or 0.0
     
-    # Recent invoices
+    # 5. Recent invoices
     recent_invoices = db.query(Invoice).order_by(
         Invoice.created_at.desc()
-    ).limit(10).all()
+    ).limit(8).all()
     
-    # Exception breakdown
+    # 6. Exception breakdown by type
     exception_breakdown = db.query(
-        Exception.type,
-        func.count(Exception.id).label('count')
+        InvoiceException.type,
+        func.count(InvoiceException.id).label('count')
     ).filter(
-        Exception.status == ExceptionStatus.OPEN
-    ).group_by(Exception.type).all()
+        InvoiceException.status.in_([ExceptionStatus.OPEN, ExceptionStatus.IN_REVIEW])
+    ).group_by(InvoiceException.type).all()
     
-    # Recent activity
+    # 7. Recent activity
     recent_activity = db.query(AuditEvent).order_by(
         AuditEvent.timestamp.desc()
-    ).limit(20).all()
+    ).limit(15).all()
     
-    # Invoice status distribution
+    # 8. Invoice status distribution
     status_distribution = db.query(
         Invoice.status,
         func.count(Invoice.id).label('count')
@@ -75,17 +89,22 @@ async def get_dashboard(db: Session = Depends(get_db)):
             "total_invoices": total_invoices,
             "pending_review": pending_review,
             "approved": approved_invoices,
+            "rejected": rejected_invoices,
+            "on_hold": on_hold_invoices,
             "exceptions": open_exceptions,
-            "payable_amount": round(payable_amount, 2),
-            "overdue_amount": round(overdue_amount, 2),
-            "paid_amount": round(paid_amount, 2)
+            "total_exceptions": total_exceptions,
+            "pending_approvals": pending_approvals,
+            "payable_amount": round(float(payable_amount), 2),
+            "overdue_amount": round(float(overdue_amount), 2),
+            "paid_amount": round(float(paid_amount), 2)
         },
         "recent_invoices": [
             {
                 "id": inv.id,
                 "invoice_number": inv.invoice_number,
-                "vendor_name": inv.vendor.name if inv.vendor else "Unknown",
+                "vendor_name": inv.vendor.name if inv.vendor else (inv.raw_vendor_name or "Unknown"),
                 "amount": inv.total_amount,
+                "currency": inv.currency,
                 "status": inv.status.value,
                 "created_at": inv.created_at.isoformat()
             }
@@ -100,20 +119,21 @@ async def get_dashboard(db: Session = Depends(get_db)):
         ],
         "status_distribution": [
             {
-                "status": status.value,
+                "status": st.value,
                 "count": count
             }
-            for status, count in status_distribution
+            for st, count in status_distribution
         ],
         "recent_activity": [
             {
-                "id": activity.id,
-                "action": activity.action.value,
-                "entity_type": activity.entity_type,
-                "entity_id": activity.entity_id,
-                "timestamp": activity.timestamp.isoformat(),
-                "result": activity.result
+                "id": act.id,
+                "action": act.action.value,
+                "entity_type": act.entity_type,
+                "entity_id": act.entity_id,
+                "result": act.result,
+                "metadata": act.event_metadata or {},
+                "timestamp": act.timestamp.isoformat()
             }
-            for activity in recent_activity
+            for act in recent_activity
         ]
     }
