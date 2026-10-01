@@ -8,7 +8,7 @@ backend_env = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".en
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql://payguard:payguard@localhost:5432/payguard"
+    database_url: str = "sqlite:///./payguard.db"
     
     # NOVA API (Server-side only)
     nova_api_key: str = ""
